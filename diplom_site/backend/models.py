@@ -40,6 +40,8 @@ class User(AbstractUser):
     REQUIRED_FIELDS = ['email']
     objects = UserManager
     USERNAME_FIELD = 'email'
+    first_name = models.CharField(max_length=20, verbose_name='Имя')
+    last_name = models.CharField(max_length=20, verbose_name='Фамилия')
     email = models.EmailField(_('email address'), verbose_name='Электронная почта', unique=True)
     company = models.CharField(verbose_name='Компания', max_length=40, blank=True)
     position = models.CharField(verbose_name='Должность', max_length=40, blank=True)
@@ -53,6 +55,9 @@ class User(AbstractUser):
             'unique': _("A user with that username already exists."),
         },
     )
+
+    def __str__(self):
+        return f'{self.first_name} {self.last_name}'
 
 
 class Shop(models.Model):
@@ -105,3 +110,44 @@ class ProductParameter(models.Model):
     parameter = models.ForeignKey(Parameter, verbose_name='Параметр', related_name='product_parameters', blank=True,
                                   on_delete=models.CASCADE)
     value = models.CharField(verbose_name='Значение', max_length=100)
+
+
+class Contact(models.Model):
+    user = models.ForeignKey(User, verbose_name='Пользователь', related_name='contacts',
+                             blank=True, on_delete=models.CASCADE)
+    city = models.CharField(max_length=100, verbose_name='Город', blank=True)
+    address = models.CharField(max_length=100, verbose_name='Адрес', blank=True)
+    phone = models.CharField(max_length=20, verbose_name='Телефон', blank=True)
+
+    def __str__(self):
+        return f'{self.city}, {self.address}'
+
+
+class Order(models.Model):
+    user = models.ForeignKey(User, verbose_name='Пользователь',
+                             related_name='orders', blank=True,
+                             on_delete=models.CASCADE)
+    dt = models.DateTimeField(auto_now_add=True)
+    status_choices = (
+        ('basket', 'В корзине'),
+        ('new', 'Новый заказ'),
+        ('confirmed', 'Подтвержден'),
+        ('sent', 'Отправлен'),
+        ('completed', 'Завершен'),
+        ('cancelled', 'Отменен'),
+    )
+    state = models.CharField(verbose_name='Статус', choices=status_choices, max_length=15)
+    contact = models.ForeignKey(Contact, verbose_name='Контакт',
+                                blank=True, null=True,
+                                on_delete=models.CASCADE)
+
+
+class OrderItem(models.Model):
+    order = models.ForeignKey(Order, verbose_name='Заказ', related_name='ordered_items', blank=True,
+                              on_delete=models.CASCADE)
+
+    product_info = models.ForeignKey(ProductInfo, verbose_name='Информация о продукте',
+                                     related_name='ordered_items',
+                                     blank=True,
+                                     on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField(verbose_name='Количество')
