@@ -37,22 +37,21 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractUser):
-    REQUIRED_FIELDS = ['email']
+    REQUIRED_FIELDS = ['username']
     objects = UserManager
     USERNAME_FIELD = 'email'
     first_name = models.CharField(max_length=20, verbose_name='Имя')
     last_name = models.CharField(max_length=20, verbose_name='Фамилия')
-    email = models.EmailField(_('email address'), verbose_name='Электронная почта', unique=True)
+    email = models.EmailField(verbose_name='Электронная почта', unique=True)
     company = models.CharField(verbose_name='Компания', max_length=40, blank=True)
     position = models.CharField(verbose_name='Должность', max_length=40, blank=True)
     username_validator = UnicodeUsernameValidator()
     username = models.CharField(
-        _('username'),
         max_length=150,
-        help_text=_('Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.'),
+        help_text='Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.',
         validators=[username_validator],
         error_messages={
-            'unique': _("A user with that username already exists."),
+            'unique': "A user with that username already exists.",
         },
     )
 
