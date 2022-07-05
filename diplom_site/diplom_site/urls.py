@@ -17,10 +17,12 @@ from django.contrib import admin
 from django.urls import path
 from rest_framework.authtoken import views
 
-from backend.views import CreateUserView
+from backend.views import CreateUserView, UpdateUserView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api-token-auth/', views.obtain_auth_token),
-    path('register/', CreateUserView.as_view())
+    path('register/', CreateUserView.as_view()),
+    path('user/', UpdateUserView.as_view()),
+
 ]

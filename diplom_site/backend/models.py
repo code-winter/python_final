@@ -8,9 +8,17 @@ USER_TYPE_CHOICES = (
 
 
 class User(AbstractUser):
-    company = models.CharField(verbose_name='Компания', max_length=40, blank=True)
-    position = models.CharField(verbose_name='Должность', max_length=40, blank=True)
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['first_name', 'last_name', 'username']
+    email = models.EmailField(unique=True, verbose_name='Электронная почта')
+    first_name = models.CharField(verbose_name='Имя', max_length=40)
+    last_name = models.CharField(verbose_name='Фамилия', max_length=60)
+    company = models.CharField(verbose_name='Компания', max_length=40, blank=True, default='Компания')
+    position = models.CharField(verbose_name='Должность', max_length=40, blank=True, default='Сотрудник')
     type = models.CharField(verbose_name='Тип пользователя', choices=USER_TYPE_CHOICES, max_length=5, default='buyer')
+
+    def __str__(self):
+        return f'{self.first_name} {self.last_name}'
 
 
 class Shop(models.Model):
