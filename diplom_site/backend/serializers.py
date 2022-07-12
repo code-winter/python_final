@@ -2,6 +2,8 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 
+from backend.models import ProductInfo, ProductParameter, Parameter, Product, Category, Shop
+
 UserModel = get_user_model()
 
 
@@ -68,4 +70,61 @@ class UserUpdateSerializer(serializers.ModelSerializer):
             setattr(instance, key, value)
         instance.save()
         return instance
+
+
+class ShopSerializer(serializers.ModelSerializer):
+    placement = serializers.CharField(source='get_placement_display')
+
+    class Meta:
+        model = Shop
+        fields = ['name', 'url', 'state', 'placement']
+
+
+class CategorySerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Category
+        fields = ['name', ]
+
+
+class ProductSerializer(serializers.ModelSerializer):
+    category = CategorySerializer()
+
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'category']
+
+
+class ParameterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Parameter
+        fields = ['name']
+
+
+class ProdParamSerializer(serializers.ModelSerializer):
+    parameter = ParameterSerializer()
+
+    class Meta:
+        model = ProductParameter
+        fields = ['parameter', 'value']
+
+
+class ProductInfoSerializer(serializers.ModelSerializer):
+    product = ProductSerializer()
+    shop = ShopSerializer()
+    params = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ProductInfo
+        fields = ['id', 'model', 'product', 'params', 'shop', 'quantity', 'price',]
+
+    def get_params(self, obj):
+        filtered_data = ProductParameter.objects.all().filter(product_info_id=obj.product_id)
+        serializer = ProdParamSerializer(filtered_data, many=True)
+        serialized_data = {}
+        for param in serializer.data:
+            print(param)
+            serialized_data.setdefault(param['parameter']['name'], param['value'])
+        return serialized_data
+
 

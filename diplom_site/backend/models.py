@@ -5,6 +5,15 @@ USER_TYPE_CHOICES = (
     ('buyer', 'Покупатель'),
 
 )
+CITIES = (
+    ('MSK', 'Москва'),
+    ('SPB', 'Санкт-Петербург'),
+    ('PSK', 'Псков'),
+    ('PRM', 'Пермь'),
+    ('NSK', 'Новосибирск'),
+    ('VSTK', 'Владивосток'),
+    ('KGD', 'Калининград'),
+)
 
 
 class User(AbstractUser):
@@ -32,6 +41,7 @@ class Shop(models.Model):
     user = models.OneToOneField(User, verbose_name='Пользователь',
                                 blank=True, null=True,
                                 on_delete=models.CASCADE)
+    placement = models.CharField(verbose_name='Местонахождение', choices=CITIES, default=CITIES[0][0], max_length=10)
 
     class Meta:
         verbose_name = 'Магазин'
@@ -88,6 +98,9 @@ class ProductInfo(models.Model):
         models.UniqueConstraint(fields=['product', 'shop', 'external_id'], name='unique_product_info'),
     ]
 
+    def __str__(self):
+        return self.product.name
+
 
 class Parameter(models.Model):
     name = models.CharField(max_length=100, verbose_name='Название')
@@ -115,8 +128,8 @@ class ProductParameter(models.Model):
         models.UniqueConstraint(fields=['product_info', 'parameter'], name='unique_product_parameter'),
     ]
 
-    # def __str__(self):
-    #     return self.name
+    def __str__(self):
+        return f'{self.product_info.product.name} - {self.parameter.name}'
 
 
 class Contact(models.Model):
@@ -163,3 +176,9 @@ class OrderItem(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['order_id', 'product_info'], name='unique_order_item'),
         ]
+
+
+class ShippingCost(models.Model):
+    city = models.CharField(verbose_name='Город', unique=True, max_length=10, choices=CITIES, default=CITIES[0][0])
+    price = models.PositiveIntegerField(verbose_name='Стоимость', default=0)
+    custom_delivery = models.PositiveIntegerField(verbose_name='Составная доставка')

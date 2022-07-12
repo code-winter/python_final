@@ -1,4 +1,3 @@
-
 from requests import get
 import yaml
 from django.core.validators import URLValidator
@@ -8,7 +7,10 @@ from django.core.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
-from backend.serializers import UserSerializer, UserUpdateSerializer
+from django.core.exceptions import ObjectDoesNotExist
+
+from backend.serializers import UserSerializer, UserUpdateSerializer, ProductInfoSerializer,  \
+    ParameterSerializer, ProductSerializer
 from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop
 
 
@@ -56,8 +58,6 @@ class PartnerUpdate(APIView):
     Класс для обновления прайса от поставщика
     """
     def post(self, request, *args, **kwargs):
-        if not request.user.is_authenticated:
-            return JsonResponse({'Status': False, 'Error': 'Log in required'}, status=403)
 
         if request.user.type != 'shop':
             return JsonResponse({'Status': False, 'Error': 'Только для магазинов'}, status=403)
@@ -99,3 +99,30 @@ class PartnerUpdate(APIView):
                 return JsonResponse({'Status': True})
 
         return JsonResponse({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'})
+
+
+class ListProductView(APIView):
+    permission_classes = [permissions.IsAuthenticated, ]
+
+    def get(self, request):
+        products = Product.objects.all()
+        serializer = ProductSerializer(products, many=True)
+        return Response({"products": serializer.data})
+
+
+class ProductDetailsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, ]
+
+    def get(self, request):
+        try:
+            product_id = request.data['id']
+        except KeyError:
+            return Response({
+                "id": "This field is required"
+            })
+        try:
+            product_info = ProductInfo.objects.get(product_id=product_id)
+        except ObjectDoesNotExist:
+            return Response({"error": "ID does not exist"})
+        serializer = ProductInfoSerializer(product_info)
+        return Response(serializer.data)
