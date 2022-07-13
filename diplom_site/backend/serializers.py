@@ -63,6 +63,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         if validated_data.get('password'):
             if validated_data.get('old_password'):
                 instance.set_password(validated_data['password'])
+                validated_data.pop('password')
             else:
                 raise serializers.ValidationError({"old_password": "Required field. "
                                                                    "Supply your old password to change it"})
@@ -123,7 +124,6 @@ class ProductInfoSerializer(serializers.ModelSerializer):
         serializer = ProdParamSerializer(filtered_data, many=True)
         serialized_data = {}
         for param in serializer.data:
-            print(param)
             serialized_data.setdefault(param['parameter']['name'], param['value'])
         return serialized_data
 

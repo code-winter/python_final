@@ -4,6 +4,7 @@ from django.core.validators import URLValidator
 from django.http import JsonResponse
 from rest_framework import permissions
 from django.core.exceptions import ValidationError
+from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
@@ -50,6 +51,29 @@ class UpdateUserView(APIView):
             return Response(f'User updated.')
         else:
             return Response(serializer.errors)
+
+
+class RefreshToken(APIView):
+    permission_classes = [permissions.IsAuthenticated, ]
+
+    def get(self, request):
+        user = request.user
+        if request.data.get('username'):
+            if request.auth.user.email != request.data.get('username'):
+                return Response({"username": "User with that email-token does not exist"})
+            if request.data.get('password'):
+                if not user.check_password(request.data['password']):
+                    return Response({"password": "Incorrect password"})
+                old_token = request.auth
+                Token.objects.filter(key=old_token).delete()
+                token = Token.objects.create(user=user)
+                return Response({
+                    'token': token.key,
+                })
+            else:
+                return Response({"password": "Required field"})
+        else:
+            return Response({"username": "Required field"})
 
 
 class PartnerUpdate(APIView):
