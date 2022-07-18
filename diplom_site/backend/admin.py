@@ -1,5 +1,5 @@
 from django.contrib import admin
-from backend.models import User, Shop, Category, Product, ProductInfo, ProductParameter, Contact
+from backend.models import User, Shop, Category, Product, ProductInfo, ProductParameter, Contact, Order, OrderItem
 
 
 @admin.register(User)
@@ -36,3 +36,12 @@ class ProdParamAdmin(admin.ModelAdmin):
 class ContactAdmin(admin.ModelAdmin):
     pass
 
+
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    pass
+
+
+@admin.register(OrderItem)
+class OrderItemAdmin(admin.ModelAdmin):
+    pass

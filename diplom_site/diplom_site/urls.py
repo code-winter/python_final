@@ -18,7 +18,7 @@ from django.urls import path
 from rest_framework.authtoken import views
 
 from backend.views import CreateUserView, UpdateUserView, PartnerUpdate, ListProductView, ProductDetailsView, \
-    RefreshToken
+    RefreshToken, MakeOrderView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -28,5 +28,6 @@ urlpatterns = [
     path('user/', UpdateUserView.as_view()),
     path('partner_update/', PartnerUpdate.as_view()),
     path('products/', ListProductView.as_view()),
-    path('products/details/', ProductDetailsView.as_view())
+    path('products/details/', ProductDetailsView.as_view()),
+    path('products/order/', MakeOrderView.as_view())
 ]

@@ -2,7 +2,7 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 
-from backend.models import ProductInfo, ProductParameter, Parameter, Product, Category, Shop
+from backend.models import ProductInfo, ProductParameter, Parameter, Product, Category, Shop, Contact, Order, OrderItem
 
 UserModel = get_user_model()
 
@@ -126,5 +126,23 @@ class ProductInfoSerializer(serializers.ModelSerializer):
         for param in serializer.data:
             serialized_data.setdefault(param['parameter']['name'], param['value'])
         return serialized_data
+
+
+class ContactSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Contact
+        fields = ['user', 'city', 'address', 'phone']
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = ['user', 'state', 'contact']
+
+
+class OrderItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        moder = OrderItem
+        fields = ['order', 'product_info', 'quantity']
 
 

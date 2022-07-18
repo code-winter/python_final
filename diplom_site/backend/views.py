@@ -10,9 +10,18 @@ from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
 
-from backend.serializers import UserSerializer, UserUpdateSerializer, ProductInfoSerializer,  \
-    ParameterSerializer, ProductSerializer
-from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop
+from backend.serializers import UserSerializer, UserUpdateSerializer, ProductInfoSerializer, \
+    ParameterSerializer, ProductSerializer, ContactSerializer, OrderSerializer, OrderItemSerializer
+from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop, Order, OrderItem, Contact
+
+
+def search_arg_request(request, keyword):
+    try:
+        result = request.data[keyword]
+    except KeyError:
+        error_msg = {f"{keyword}": "This field is required"}
+        return False, error_msg
+    return True, result
 
 
 class CreateUserView(APIView):
@@ -56,7 +65,7 @@ class UpdateUserView(APIView):
 class RefreshToken(APIView):
     permission_classes = [permissions.IsAuthenticated, ]
 
-    def get(self, request):
+    def post(self, request):
         user = request.user
         if request.data.get('username'):
             if request.auth.user.email != request.data.get('username'):
@@ -138,15 +147,54 @@ class ProductDetailsView(APIView):
     permission_classes = [permissions.IsAuthenticated, ]
 
     def get(self, request):
-        try:
-            product_id = request.data['id']
-        except KeyError:
-            return Response({
-                "id": "This field is required"
-            })
+        flag, product_id = search_arg_request(request, 'id')
+        if not flag:
+            return Response(product_id)
         try:
             product_info = ProductInfo.objects.get(product_id=product_id)
         except ObjectDoesNotExist:
             return Response({"error": "ID does not exist"})
         serializer = ProductInfoSerializer(product_info)
         return Response(serializer.data)
+
+
+class MakeOrderView(APIView):
+    permission_classes = [permissions.IsAuthenticated, ]
+
+    def post(self, request):
+        flag, contact = search_arg_request(request, 'contact')
+        if not flag:
+            return Response(contact)
+        if not isinstance(contact, dict):
+            return Response({"contact": "Invalid format"})
+
+        if contact.get('city'):
+            contact_data = {
+                'user': request.user.id,
+                'city': contact['city'],
+                'address': contact.get('address', 'Не указан'),
+                'phone': contact.get('phone', 'Не указан')
+
+            }
+            contact = ContactSerializer(data=contact_data)
+            if contact.is_valid():
+                contact.save()
+            else:
+                return Response(contact.errors)
+        else:
+            return Response({"contact": {"city": "This field is required"}})
+        order_data = {
+            'user': request.user.id,
+            'contact': contact.instance.id
+        }
+        order = OrderSerializer(data=order_data, partial=True)
+        if order.is_valid():
+            order.save()
+        else:
+            return Response(order.errors)
+        flag, quantity = search_arg_request(request, 'quantity')
+        if not flag:
+            return Response(quantity)
+
+        # order_item = OrderItemSerializer(order=order.id, product_info=)
+

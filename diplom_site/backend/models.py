@@ -156,7 +156,7 @@ class Order(models.Model):
         ('completed', 'Завершен'),
         ('cancelled', 'Отменен'),
     )
-    state = models.CharField(verbose_name='Статус', choices=status_choices, max_length=15)
+    state = models.CharField(verbose_name='Статус', choices=status_choices, max_length=15, default=status_choices[0][0])
     contact = models.ForeignKey(Contact, verbose_name='Контакт',
                                 blank=True, null=True,
                                 on_delete=models.CASCADE)
