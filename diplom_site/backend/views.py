@@ -11,8 +11,29 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
 
 from backend.serializers import UserSerializer, UserUpdateSerializer, ProductInfoSerializer, \
-    ParameterSerializer, ProductSerializer, ContactSerializer, OrderSerializer, OrderItemSerializer
-from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop, Order, OrderItem, Contact
+    ProductSerializer, ContactSerializer, OrderSerializer, OrderItemSerializer
+from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop, CITIES
+
+
+def calculate_delivery_cost(shop_city, buyer_city):
+    if buyer_city in dict(CITIES).values():
+        shop_index = 0
+        buyer_index = 0
+        for index, city in enumerate(dict(CITIES).values()):
+            if shop_city == city:
+                shop_index = index
+        for index, city in enumerate(dict(CITIES).values()):
+            if buyer_city == city:
+                buyer_index = index
+        distance = shop_index - buyer_index
+        if distance < 0:
+            distance *= -1
+        shipping_fee = 500
+        cost = shipping_fee * distance
+        return cost
+    else:
+        cost = 5000
+        return cost
 
 
 def search_arg_request(request, keyword):
@@ -29,7 +50,7 @@ class CreateUserView(APIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = UserSerializer
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request):
         serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -90,7 +111,7 @@ class PartnerUpdate(APIView):
     """
     Класс для обновления прайса от поставщика
     """
-    def post(self, request, *args, **kwargs):
+    def post(self, request):
 
         if request.user.type != 'shop':
             return JsonResponse({'Status': False, 'Error': 'Только для магазинов'}, status=403)
@@ -147,8 +168,8 @@ class ProductDetailsView(APIView):
     permission_classes = [permissions.IsAuthenticated, ]
 
     def get(self, request):
-        flag, product_id = search_arg_request(request, 'id')
-        if not flag:
+        is_id, product_id = search_arg_request(request, 'id')
+        if not is_id:
             return Response(product_id)
         try:
             product_info = ProductInfo.objects.get(product_id=product_id)
@@ -162,8 +183,8 @@ class MakeOrderView(APIView):
     permission_classes = [permissions.IsAuthenticated, ]
 
     def post(self, request):
-        flag, contact = search_arg_request(request, 'contact')
-        if not flag:
+        is_contact, contact = search_arg_request(request, 'contact')
+        if not is_contact:
             return Response(contact)
         if not isinstance(contact, dict):
             return Response({"contact": "Invalid format"})
@@ -192,9 +213,46 @@ class MakeOrderView(APIView):
             order.save()
         else:
             return Response(order.errors)
-        flag, quantity = search_arg_request(request, 'quantity')
-        if not flag:
+        is_quantity, quantity = search_arg_request(request, 'quantity')
+        if not is_quantity:
             return Response(quantity)
-
-        # order_item = OrderItemSerializer(order=order.id, product_info=)
-
+        if isinstance(quantity, int) and quantity > 0:
+            is_product, product_info_id = search_arg_request(request, 'product_info')
+            if not is_product:
+                return Response(product_info_id)
+            else:
+                try:
+                    product_details = ProductInfo.objects.get(product_id=product_info_id)
+                except ObjectDoesNotExist:
+                    return Response({"product_info": "ID does not exist"})
+                product_details_serialized = ProductInfoSerializer(product_details)
+                price = int(product_details_serialized.data['price'])
+                product_name = product_details_serialized.data['product']['name']
+                shop_city = product_details_serialized.data['shop']['placement']
+                delivery_cost = calculate_delivery_cost(shop_city, contact.data['city'])
+                total = price * quantity + delivery_cost
+                order_item_data = {
+                    'order': order.instance.id,
+                    'product_info': product_details_serialized.instance.id,
+                    'quantity': quantity,
+                    'total': total
+                }
+                order_item = OrderItemSerializer(data=order_item_data)
+                if order_item.is_valid():
+                    order_item.save()
+                    return Response({
+                        'Статус': 'В корзине',
+                        'Товар': {
+                            'Наименование': product_name,
+                            'Цена': price,
+                            'Местонахождение': shop_city,
+                            'Количество': quantity
+                        },
+                        'Сумма': price * quantity,
+                        'Стоимость доставки': delivery_cost,
+                        'Итог': total
+                    })
+                else:
+                    return Response(order_item.errors)
+        else:
+            return Response({"quantity": "Only positive integers are allowed"})

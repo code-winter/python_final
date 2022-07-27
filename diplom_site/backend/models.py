@@ -36,7 +36,7 @@ class User(AbstractUser):
 
 class Shop(models.Model):
     name = models.CharField(max_length=50, verbose_name='Название')
-    url = models.CharField(max_length=100, verbose_name='Адрес сайта')
+    url = models.CharField(max_length=100, verbose_name='Адрес сайта', default='Не указан', blank=True)
     state = models.BooleanField(default=True, verbose_name='Прием заказов')
     user = models.OneToOneField(User, verbose_name='Пользователь',
                                 blank=True, null=True,
@@ -139,8 +139,12 @@ class Contact(models.Model):
     address = models.CharField(max_length=100, verbose_name='Адрес', blank=True)
     phone = models.CharField(max_length=20, verbose_name='Телефон', blank=True)
 
+    class Meta:
+        verbose_name = 'Контакт'
+        verbose_name_plural = 'Список контактов'
+
     def __str__(self):
-        return f'{self.city}, {self.address}'
+        return f'Контакт {self.user} ({self.city}, {self.address})'
 
 
 class Order(models.Model):
@@ -161,6 +165,13 @@ class Order(models.Model):
                                 blank=True, null=True,
                                 on_delete=models.CASCADE)
 
+    def __str__(self):
+        return f'{self.user}, {self.dt.strftime("%Y-%m-%d, %H:%M:%S")}'
+
+    class Meta:
+        verbose_name = 'Заказ'
+        verbose_name_plural = 'Список заказов'
+
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, verbose_name='Заказ', related_name='ordered_items', blank=True,
@@ -171,14 +182,16 @@ class OrderItem(models.Model):
                                      blank=True,
                                      on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(verbose_name='Количество')
+    total = models.PositiveIntegerField(verbose_name='Сумма', default=0)
 
     class Meta:
+        verbose_name = 'Детали заказа'
+        verbose_name_plural = 'Список деталей заказа'
         constraints = [
             models.UniqueConstraint(fields=['order_id', 'product_info'], name='unique_order_item'),
         ]
 
+    def __str__(self):
+        return f'Заказ {self.order}'
 
-class ShippingCost(models.Model):
-    city = models.CharField(verbose_name='Город', unique=True, max_length=10, choices=CITIES, default=CITIES[0][0])
-    price = models.PositiveIntegerField(verbose_name='Стоимость', default=0)
-    custom_delivery = models.PositiveIntegerField(verbose_name='Составная доставка')
+

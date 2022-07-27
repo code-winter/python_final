@@ -117,7 +117,7 @@ class ProductInfoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductInfo
-        fields = ['id', 'model', 'product', 'params', 'shop', 'quantity', 'price',]
+        fields = ['id', 'model', 'product', 'params', 'shop', 'quantity', 'price', ]
 
     def get_params(self, obj):
         filtered_data = ProductParameter.objects.all().filter(product_info_id=obj.product_id)
@@ -142,7 +142,7 @@ class OrderSerializer(serializers.ModelSerializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
-        moder = OrderItem
+        model = OrderItem
         fields = ['order', 'product_info', 'quantity']
 
 
