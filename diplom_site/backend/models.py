@@ -183,6 +183,7 @@ class OrderItem(models.Model):
                                      on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(verbose_name='Количество')
     total = models.PositiveIntegerField(verbose_name='Сумма', default=0)
+    order_number = models.CharField(verbose_name='Номер заказа', blank=True, max_length=50)
 
     class Meta:
         verbose_name = 'Детали заказа'

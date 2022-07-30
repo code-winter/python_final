@@ -12,7 +12,7 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from backend.serializers import UserSerializer, UserUpdateSerializer, ProductInfoSerializer, \
     ProductSerializer, ContactSerializer, OrderSerializer, OrderItemSerializer
-from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop, CITIES
+from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop, CITIES, OrderItem, Order
 
 
 def calculate_delivery_cost(shop_city, buyer_city):
@@ -28,6 +28,8 @@ def calculate_delivery_cost(shop_city, buyer_city):
         distance = shop_index - buyer_index
         if distance < 0:
             distance *= -1
+        if distance == 0:
+            return 200
         shipping_fee = 500
         cost = shipping_fee * distance
         return cost
@@ -230,7 +232,7 @@ class MakeOrderView(APIView):
                 product_name = product_details_serialized.data['product']['name']
                 shop_city = product_details_serialized.data['shop']['placement']
                 delivery_cost = calculate_delivery_cost(shop_city, contact.data['city'])
-                total = price * quantity + delivery_cost
+                total = int(price * quantity + delivery_cost)
                 order_item_data = {
                     'order': order.instance.id,
                     'product_info': product_details_serialized.instance.id,
@@ -257,3 +259,91 @@ class MakeOrderView(APIView):
                     return Response(order_item.errors)
         else:
             return Response({"quantity": "Only positive integers are allowed"})
+
+
+class ConfirmOrderView(APIView):
+    permission_classes = [permissions.IsAuthenticated, ]
+
+    def post(self, request):
+        is_id, order_id = search_arg_request(request, 'id')
+        if not is_id:
+            return Response(is_id)
+        try:
+            order_item = OrderItem.objects.get(id=order_id)
+        except ObjectDoesNotExist:
+            return Response({'id': 'Order with this id does not exist'})
+        contact = order_item.order.contact
+        err_response = {}
+        if contact.address == 'Не указан' and not request.data.get('address'):
+            err_response.setdefault('address', 'Fill this field to confirm')
+        if contact.phone == 'Не указан' and not request.data.get('phone'):
+            err_response.setdefault('phone', 'Fill this field to confirm')
+        if err_response.get('phone') or err_response.get('address'):
+            return Response(err_response)
+        address = request.data.get('address')
+        phone = request.data.get('phone')
+        contact.address = address
+        contact.phone = phone
+        contact.save()
+        order = order_item.order
+        order.state = 'confirmed'
+        order.save()
+        quantity = order_item.quantity
+        product = order_item.product_info
+        product.quantity = product.quantity - quantity
+        product.save()
+        order_number = f'{contact.city}_0{order_id}_{order.dt.strftime("%yx%mx%d")}'
+        order_item.order_number = order_number
+        order_item.save()
+        return Response({
+            'status': 'OK',
+            'order_number': order_number,
+            'product': {
+                'name': product.product.name,
+                'shop': product.shop.name,
+                'price': product.price,
+                'quantity': quantity,
+                'total': order_item.total
+            },
+            'user_info': {
+                'address': contact.address,
+                'phone': contact.phone,
+                'email': contact.user.email
+            }
+        })
+
+
+class ListOrdersView(APIView):
+    permission_classes = [permissions.IsAuthenticated, ]
+
+    def get(self, request):
+        user_id = request.user.id
+        orders = OrderItem.objects.filter(order__user__id=user_id).all()
+        response = {}
+        if orders.exists():
+            orders_serialized = OrderItemSerializer(orders, many=True)
+            for pos, item in enumerate(orders_serialized.data):
+                response.setdefault(pos, {
+                    'id': orders[pos].id,
+                    'order_number': item['order_number'],
+                    'date_created': orders[pos].order.dt.strftime("%Y.%m.%d"),
+                    'total': item['total'],
+                    'state': orders[pos].order.state
+                })
+            return Response({'orders': response})
+        else:
+            return Response({'orders': 'No orders found'})
+
+
+class InfoOrdersView(APIView):
+    permission_classes = [permissions.IsAuthenticated, ]
+
+    def get(self, request):
+        user_id = request.user.id
+        is_id, order_id = search_arg_request(request, 'id')
+        if not is_id:
+            return Response(is_id)
+        try:
+            order_item = OrderItem.objects.get(id=order_id)
+        except ObjectDoesNotExist:
+            return Response({'id': 'Order with this id does not exist'})
