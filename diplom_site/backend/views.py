@@ -241,12 +241,13 @@ class MakeOrderView(APIView):
                 if order_item.is_valid():
                     order_item.save()
                     return Response({
-                        'Статус': 'В корзине',
-                        'Товар': {
-                            'Наименование': product_name,
-                            'Цена': price,
-                            'Местонахождение': shop_city,
-                            'Количество': quantity
+                        'id': order_item.instance.id,
+                        'status': 'В корзине',
+                        'product': {
+                            'name': product_name,
+                            'price': price,
+                            'shop_location': shop_city,
+                            'quantity': quantity
                         },
                         'Сумма': price * quantity,
                         'Стоимость доставки': delivery_cost,
