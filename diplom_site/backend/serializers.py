@@ -1,4 +1,3 @@
-from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 
@@ -15,6 +14,7 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'is_staff', 'is_superuser')
 
     def create(self, validated_data):
+        # выкидываем пароль из словаря, т.к. нужно его сохранять хешированным
         password = validated_data.pop('password')
         user = UserModel.objects.create_user(**validated_data)
         user.set_password(password)
@@ -38,6 +38,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if attrs.get('password'):
             if attrs.get('password2'):
+                # проверяем, совпадают ли пароли
                 if attrs['password'] != attrs['password2']:
                     raise serializers.ValidationError({"password": "Password fields didn't match."})
             else:
@@ -120,6 +121,7 @@ class ProductInfoSerializer(serializers.ModelSerializer):
         fields = ['id', 'model', 'product', 'params', 'shop', 'quantity', 'price', ]
 
     def get_params(self, obj):
+        # улучшенное отображение параметров
         filtered_data = ProductParameter.objects.all().filter(product_info_id=obj.product_id)
         serializer = ProdParamSerializer(filtered_data, many=True)
         serialized_data = {}
@@ -135,6 +137,8 @@ class ContactSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
+    state = serializers.CharField(source='get_state_display')
+
     class Meta:
         model = Order
         fields = ['user', 'state', 'contact']

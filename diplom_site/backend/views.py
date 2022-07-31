@@ -12,10 +12,13 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from backend.serializers import UserSerializer, UserUpdateSerializer, ProductInfoSerializer, \
     ProductSerializer, ContactSerializer, OrderSerializer, OrderItemSerializer
-from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop, CITIES, OrderItem, Order
+from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop, CITIES, OrderItem
 
 
 def calculate_delivery_cost(shop_city, buyer_city):
+    """
+    Функция для расчета стоимости доставки. Доставка рассчитывается от количества узлов между городами
+    """
     if buyer_city in dict(CITIES).values():
         shop_index = 0
         buyer_index = 0
@@ -29,6 +32,7 @@ def calculate_delivery_cost(shop_city, buyer_city):
         if distance < 0:
             distance *= -1
         if distance == 0:
+            # если покупатель и магазин находятся в одном городе
             return 200
         shipping_fee = 500
         cost = shipping_fee * distance
@@ -39,6 +43,9 @@ def calculate_delivery_cost(shop_city, buyer_city):
 
 
 def search_arg_request(request, keyword):
+    """
+    Функция для упрощенного поиска аргументов в теле запроса
+    """
     try:
         result = request.data[keyword]
     except KeyError:
@@ -48,6 +55,9 @@ def search_arg_request(request, keyword):
 
 
 class CreateUserView(APIView):
+    """
+    View-класс для создания пользователей.
+    """
     model = get_user_model()
     permission_classes = [permissions.AllowAny]
     serializer_class = UserSerializer
@@ -66,6 +76,10 @@ class CreateUserView(APIView):
 
 
 class UpdateUserView(APIView):
+    """
+    View-класс для изменения пользователей. Допускается изменение только своего пользователя и только для
+    авторизированных пользователей
+    """
     model = get_user_model()
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserUpdateSerializer
@@ -77,6 +91,7 @@ class UpdateUserView(APIView):
 
     def patch(self, request):
         user = request.user
+        # передаем partial=True, чтобы не требовать полную информацию от пользователя каждый раз
         serializer = UserUpdateSerializer(user, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -86,6 +101,9 @@ class UpdateUserView(APIView):
 
 
 class RefreshToken(APIView):
+    """
+    View-класс для обновления токена доступа
+    """
     permission_classes = [permissions.IsAuthenticated, ]
 
     def post(self, request):
@@ -116,7 +134,7 @@ class PartnerUpdate(APIView):
     def post(self, request):
 
         if request.user.type != 'shop':
-            return JsonResponse({'Status': False, 'Error': 'Только для магазинов'}, status=403)
+            return JsonResponse({'Status': False, 'Error': 'Shops only'}, status=403)
 
         url = request.data.get('url')
         if url:
@@ -154,10 +172,13 @@ class PartnerUpdate(APIView):
 
                 return JsonResponse({'Status': True})
 
-        return JsonResponse({'Status': False, 'Errors': 'Не указаны все необходимые аргументы'})
+        return JsonResponse({'Status': False, 'Errors': 'All required arguments were not provided'})
 
 
 class ListProductView(APIView):
+    """
+    View-класс для отображения все товаров
+    """
     permission_classes = [permissions.IsAuthenticated, ]
 
     def get(self, request):
@@ -167,6 +188,9 @@ class ListProductView(APIView):
 
 
 class ProductDetailsView(APIView):
+    """
+    View-класс для отображения подробной информации о продукте.
+    """
     permission_classes = [permissions.IsAuthenticated, ]
 
     def get(self, request):
@@ -182,6 +206,9 @@ class ProductDetailsView(APIView):
 
 
 class MakeOrderView(APIView):
+    """
+    View-класс для создания заказа. Создаются объекты моделей Contact, Order и OrderItem
+    """
     permission_classes = [permissions.IsAuthenticated, ]
 
     def post(self, request):
@@ -192,6 +219,7 @@ class MakeOrderView(APIView):
             return Response({"contact": "Invalid format"})
 
         if contact.get('city'):
+            # создаем объект Contact
             contact_data = {
                 'user': request.user.id,
                 'city': contact['city'],
@@ -206,6 +234,7 @@ class MakeOrderView(APIView):
                 return Response(contact.errors)
         else:
             return Response({"contact": {"city": "This field is required"}})
+        # создаем объект Order
         order_data = {
             'user': request.user.id,
             'contact': contact.instance.id
@@ -215,6 +244,7 @@ class MakeOrderView(APIView):
             order.save()
         else:
             return Response(order.errors)
+        # ищем количество в запросе
         is_quantity, quantity = search_arg_request(request, 'quantity')
         if not is_quantity:
             return Response(quantity)
@@ -227,12 +257,14 @@ class MakeOrderView(APIView):
                     product_details = ProductInfo.objects.get(product_id=product_info_id)
                 except ObjectDoesNotExist:
                     return Response({"product_info": "ID does not exist"})
+                # получаем нужную информацию из созданных объектов
                 product_details_serialized = ProductInfoSerializer(product_details)
                 price = int(product_details_serialized.data['price'])
                 product_name = product_details_serialized.data['product']['name']
                 shop_city = product_details_serialized.data['shop']['placement']
                 delivery_cost = calculate_delivery_cost(shop_city, contact.data['city'])
                 total = int(price * quantity + delivery_cost)
+                # создаем объект OrderItem
                 order_item_data = {
                     'order': order.instance.id,
                     'product_info': product_details_serialized.instance.id,
@@ -251,9 +283,9 @@ class MakeOrderView(APIView):
                             'shop_location': shop_city,
                             'quantity': quantity
                         },
-                        'Сумма': price * quantity,
-                        'Стоимость доставки': delivery_cost,
-                        'Итог': total
+                        'sum': price * quantity,
+                        'delivery_cost': delivery_cost,
+                        'total': total
                     })
                 else:
                     return Response(order_item.errors)
@@ -262,6 +294,9 @@ class MakeOrderView(APIView):
 
 
 class ConfirmOrderView(APIView):
+    """
+    View-класс для подтверждения заказа.
+    """
     permission_classes = [permissions.IsAuthenticated, ]
 
     def post(self, request):
@@ -273,7 +308,7 @@ class ConfirmOrderView(APIView):
         except ObjectDoesNotExist:
             return Response({'id': 'Order with this id does not exist'})
         contact = order_item.order.contact
-        err_response = {}
+        err_response = {}  # заглушка для описания ошибок для выдачи Response
         if contact.address == 'Не указан' and not request.data.get('address'):
             err_response.setdefault('address', 'Fill this field to confirm')
         if contact.phone == 'Не указан' and not request.data.get('phone'):
@@ -286,12 +321,14 @@ class ConfirmOrderView(APIView):
         contact.phone = phone
         contact.save()
         order = order_item.order
+        # меняем статус заказа
         order.state = 'confirmed'
         order.save()
         quantity = order_item.quantity
         product = order_item.product_info
         product.quantity = product.quantity - quantity
         product.save()
+        # номер заказа имеет формат 'город_0(айди_заказа)_дата'
         order_number = f'{contact.city}_0{order_id}_{order.dt.strftime("%yx%mx%d")}'
         order_item.order_number = order_number
         order_item.save()
@@ -308,12 +345,16 @@ class ConfirmOrderView(APIView):
             'user_info': {
                 'address': contact.address,
                 'phone': contact.phone,
-                'email': contact.user.email
+                'email': contact.user.email,
+                'person': f'{contact.user.first_name} {contact.user.last_name}'
             }
         })
 
 
 class ListOrdersView(APIView):
+    """
+    View-класс для отображения всех заказов пользователя
+    """
     permission_classes = [permissions.IsAuthenticated, ]
 
     def get(self, request):
@@ -322,6 +363,7 @@ class ListOrdersView(APIView):
         response = {}
         if orders.exists():
             orders_serialized = OrderItemSerializer(orders, many=True)
+            # перебираем все заказы для более читаемой информации в Response
             for pos, item in enumerate(orders_serialized.data):
                 response.setdefault(pos, {
                     'id': orders[pos].id,
@@ -336,6 +378,9 @@ class ListOrdersView(APIView):
 
 
 class InfoOrdersView(APIView):
+    """
+    View-класс для отображения деталей заказа
+    """
     permission_classes = [permissions.IsAuthenticated, ]
 
     def get(self, request):
@@ -347,3 +392,27 @@ class InfoOrdersView(APIView):
             order_item = OrderItem.objects.get(id=order_id)
         except ObjectDoesNotExist:
             return Response({'id': 'Order with this id does not exist'})
+        order_item = OrderItem.objects.get(id=order_id)
+        order_owner = order_item.order.user.id
+        if user_id != order_owner:
+            return Response({'error': 'Permission denied'})
+        response = {
+            'order_number': order_item.order_number,
+            'date_created': order_item.order.dt.strftime("%Y.%m.%d"),
+            'state': order_item.order.state,
+            'order_details': {
+                'product_name': order_item.product_info.product.name,
+                'shop': order_item.product_info.shop.name,
+                'price': order_item.product_info.price,
+                'quantity': order_item.quantity,
+                'total': order_item.total
+            },
+            'contact_details': {
+                'city': order_item.order.contact.city,
+                'address': order_item.order.contact.address,
+                'phone': order_item.order.contact.phone,
+                'email': order_item.order.contact.user.email,
+                'person': f'{order_item.order.contact.user.first_name} {order_item.order.contact.user.last_name}'
+            }
+        }
+        return Response(response)
