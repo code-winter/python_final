@@ -17,7 +17,10 @@ from backend.models import Category, ProductInfo, Product, ProductParameter, Par
 
 def calculate_delivery_cost(shop_city, buyer_city):
     """
-    Функция для расчета стоимости доставки. Доставка рассчитывается от количества узлов между городами
+    Функция для расчета стоимости доставки. Доставка рассчитывается от количества узлов между города
+    :param shop_city: местонахождение магазина
+    :param buyer_city: местонахождение покупателя
+    :return: возвращает int() значение суммы
     """
     if buyer_city in dict(CITIES).values():
         shop_index = 0
@@ -45,6 +48,7 @@ def calculate_delivery_cost(shop_city, buyer_city):
 def search_arg_request(request, keyword):
     """
     Функция для упрощенного поиска аргументов в теле запроса
+    Возвращает булевый параметр и значение, если значения нет - выдает строку
     """
     try:
         result = request.data[keyword]
@@ -177,7 +181,7 @@ class PartnerUpdate(APIView):
 
 class ListProductView(APIView):
     """
-    View-класс для отображения все товаров
+    View-класс для отображения всех товаров
     """
     permission_classes = [permissions.IsAuthenticated, ]
 
