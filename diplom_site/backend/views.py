@@ -1,3 +1,4 @@
+from django.shortcuts import get_object_or_404
 from requests import get
 import yaml
 from django.core.validators import URLValidator
@@ -9,17 +10,18 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
+from rest_framework import viewsets
 
 from backend.serializers import UserSerializer, UserUpdateSerializer, ProductInfoSerializer, \
     ProductSerializer, ContactSerializer, OrderSerializer, OrderItemSerializer
-from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop, CITIES, OrderItem
+from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop, CITIES, OrderItem, User
 
 
 def calculate_delivery_cost(shop_city, buyer_city):
     """
-    Функция для расчета стоимости доставки. Доставка рассчитывается от количества узлов между города
-    :param shop_city: местонахождение магазина
-    :param buyer_city: местонахождение покупателя
+    Функция для расчета стоимости доставки. Доставка рассчитывается от количества узлов между городами.
+    :param shop_city: местонахождение магазина.
+    :param buyer_city: местонахождение покупателя.
     :return: возвращает int() значение суммы
     """
     if buyer_city in dict(CITIES).values():
@@ -47,7 +49,7 @@ def calculate_delivery_cost(shop_city, buyer_city):
 
 def search_arg_request(request, keyword):
     """
-    Функция для упрощенного поиска аргументов в теле запроса
+    Функция для упрощенного поиска аргументов в теле запроса.
     Возвращает булевый параметр и значение, если значения нет - выдает строку
     """
     try:
@@ -179,43 +181,72 @@ class PartnerUpdate(APIView):
         return JsonResponse({'Status': False, 'Errors': 'All required arguments were not provided'})
 
 
-class ListProductView(APIView):
-    """
-    View-класс для отображения всех товаров
-    """
+class ProductView(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated, ]
 
-    def get(self, request):
+    def list(self, request):
         products = Product.objects.all()
         serializer = ProductSerializer(products, many=True)
         return Response({"products": serializer.data})
 
-
-class ProductDetailsView(APIView):
-    """
-    View-класс для отображения подробной информации о продукте.
-    """
-    permission_classes = [permissions.IsAuthenticated, ]
-
-    def get(self, request):
-        is_id, product_id = search_arg_request(request, 'id')
-        if not is_id:
-            return Response(product_id)
-        try:
-            product_info = ProductInfo.objects.get(product_id=product_id)
-        except ObjectDoesNotExist:
-            return Response({"error": "ID does not exist"})
+    def retrieve(self, request, pk=None):
+        queryset = ProductInfo.objects.all()
+        product_info = get_object_or_404(queryset, pk=pk)
         serializer = ProductInfoSerializer(product_info)
         return Response(serializer.data)
 
 
-class MakeOrderView(APIView):
-    """
-    View-класс для создания заказа. Создаются объекты моделей Contact, Order и OrderItem
-    """
+class OrderView(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated, ]
 
-    def post(self, request):
+    def list(self, request):
+        user_id = request.user.id
+        orders = OrderItem.objects.filter(order__user__id=user_id).all()
+        response = {}
+        if orders.exists():
+            orders_serialized = OrderItemSerializer(orders, many=True)
+            # перебираем все заказы для более читаемой информации в Response
+            for pos, item in enumerate(orders_serialized.data):
+                response.setdefault(pos, {
+                    'id': orders[pos].id,
+                    'order_number': item['order_number'],
+                    'date_created': orders[pos].order.dt.strftime("%Y.%m.%d"),
+                    'total': item['total'],
+                    'state': orders[pos].order.state
+                })
+            return Response({'orders': response})
+        else:
+            return Response({'orders': 'No orders found'})
+
+    def retrieve(self, request, pk=None):
+        user_id = request.user.id
+        queryset = OrderItem.objects.all()
+        order_item = get_object_or_404(queryset, pk=pk)
+        order_owner = order_item.order.user.id
+        if user_id != order_owner:
+            return Response({'error': 'Permission denied'})
+        response = {
+            'order_number': order_item.order_number,
+            'date_created': order_item.order.dt.strftime("%Y.%m.%d"),
+            'state': order_item.order.state,
+            'order_details': {
+                'product_name': order_item.product_info.product.name,
+                'shop': order_item.product_info.shop.name,
+                'price': order_item.product_info.price,
+                'quantity': order_item.quantity,
+                'total': order_item.total
+            },
+            'contact_details': {
+                'city': order_item.order.contact.city,
+                'address': order_item.order.contact.address,
+                'phone': order_item.order.contact.phone,
+                'email': order_item.order.contact.user.email,
+                'person': f'{order_item.order.contact.user.first_name} {order_item.order.contact.user.last_name}'
+            }
+        }
+        return Response(response)
+
+    def create(self, request):
         is_contact, contact = search_arg_request(request, 'contact')
         if not is_contact:
             return Response(contact)
@@ -296,21 +327,9 @@ class MakeOrderView(APIView):
         else:
             return Response({"quantity": "Only positive integers are allowed"})
 
-
-class ConfirmOrderView(APIView):
-    """
-    View-класс для подтверждения заказа.
-    """
-    permission_classes = [permissions.IsAuthenticated, ]
-
-    def post(self, request):
-        is_id, order_id = search_arg_request(request, 'id')
-        if not is_id:
-            return Response(is_id)
-        try:
-            order_item = OrderItem.objects.get(id=order_id)
-        except ObjectDoesNotExist:
-            return Response({'id': 'Order with this id does not exist'})
+    def partial_update(self, request, pk=None):
+        queryset = OrderItem.objects.all()
+        order_item = get_object_or_404(queryset, pk=pk)
         contact = order_item.order.contact
         err_response = {}  # заглушка для описания ошибок для выдачи Response
         if contact.address == 'Не указан' and not request.data.get('address'):
@@ -331,9 +350,11 @@ class ConfirmOrderView(APIView):
         quantity = order_item.quantity
         product = order_item.product_info
         product.quantity = product.quantity - quantity
+        if product.quantity < 0:
+            return Response({"error": "Sorry, there is less items that you want"})
         product.save()
         # номер заказа имеет формат 'город_0(айди_заказа)_дата'
-        order_number = f'{contact.city}_0{order_id}_{order.dt.strftime("%yx%mx%d")}'
+        order_number = f'{contact.city}_0{pk}_{order.dt.strftime("%yx%mx%d")}'
         order_item.order_number = order_number
         order_item.save()
         return Response({
@@ -353,70 +374,3 @@ class ConfirmOrderView(APIView):
                 'person': f'{contact.user.first_name} {contact.user.last_name}'
             }
         })
-
-
-class ListOrdersView(APIView):
-    """
-    View-класс для отображения всех заказов пользователя
-    """
-    permission_classes = [permissions.IsAuthenticated, ]
-
-    def get(self, request):
-        user_id = request.user.id
-        orders = OrderItem.objects.filter(order__user__id=user_id).all()
-        response = {}
-        if orders.exists():
-            orders_serialized = OrderItemSerializer(orders, many=True)
-            # перебираем все заказы для более читаемой информации в Response
-            for pos, item in enumerate(orders_serialized.data):
-                response.setdefault(pos, {
-                    'id': orders[pos].id,
-                    'order_number': item['order_number'],
-                    'date_created': orders[pos].order.dt.strftime("%Y.%m.%d"),
-                    'total': item['total'],
-                    'state': orders[pos].order.state
-                })
-            return Response({'orders': response})
-        else:
-            return Response({'orders': 'No orders found'})
-
-
-class InfoOrdersView(APIView):
-    """
-    View-класс для отображения деталей заказа
-    """
-    permission_classes = [permissions.IsAuthenticated, ]
-
-    def get(self, request):
-        user_id = request.user.id
-        is_id, order_id = search_arg_request(request, 'id')
-        if not is_id:
-            return Response(is_id)
-        try:
-            order_item = OrderItem.objects.get(id=order_id)
-        except ObjectDoesNotExist:
-            return Response({'id': 'Order with this id does not exist'})
-        order_item = OrderItem.objects.get(id=order_id)
-        order_owner = order_item.order.user.id
-        if user_id != order_owner:
-            return Response({'error': 'Permission denied'})
-        response = {
-            'order_number': order_item.order_number,
-            'date_created': order_item.order.dt.strftime("%Y.%m.%d"),
-            'state': order_item.order.state,
-            'order_details': {
-                'product_name': order_item.product_info.product.name,
-                'shop': order_item.product_info.shop.name,
-                'price': order_item.product_info.price,
-                'quantity': order_item.quantity,
-                'total': order_item.total
-            },
-            'contact_details': {
-                'city': order_item.order.contact.city,
-                'address': order_item.order.contact.address,
-                'phone': order_item.order.contact.phone,
-                'email': order_item.order.contact.user.email,
-                'person': f'{order_item.order.contact.user.first_name} {order_item.order.contact.user.last_name}'
-            }
-        }
-        return Response(response)
