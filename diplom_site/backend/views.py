@@ -1,3 +1,4 @@
+from django.core.mail import send_mail
 from django.shortcuts import get_object_or_404
 from requests import get
 import yaml
@@ -15,6 +16,7 @@ from rest_framework import viewsets
 from backend.serializers import UserSerializer, UserUpdateSerializer, ProductInfoSerializer, \
     ProductSerializer, ContactSerializer, OrderSerializer, OrderItemSerializer
 from backend.models import Category, ProductInfo, Product, ProductParameter, Parameter, Shop, CITIES, OrderItem, User
+from backend.tasks import send_token_email
 
 
 def calculate_delivery_cost(shop_city, buyer_city):
@@ -50,7 +52,8 @@ def calculate_delivery_cost(shop_city, buyer_city):
 def search_arg_request(request, keyword):
     """
     Функция для упрощенного поиска аргументов в теле запроса.
-    Возвращает булевый параметр и значение, если значения нет - выдает строку
+    Возвращает булевый параметр и значение, если значения нет - выдает строку.
+    :return: Boolean
     """
     try:
         result = request.data[keyword]
@@ -60,15 +63,20 @@ def search_arg_request(request, keyword):
     return True, result
 
 
-class CreateUserView(APIView):
+class RegisterView(viewsets.ViewSet):
     """
     View-класс для создания пользователей.
+    Принимает ФИО, телефон, электронную почту, пароль.
     """
     model = get_user_model()
-    permission_classes = [permissions.AllowAny]
     serializer_class = UserSerializer
 
-    def post(self, request):
+    def create(self, request):
+        """
+        Функция для создания пользователя.
+        :param request: Данные для создания записи пользователя: ФИО, почта, пароль, телефон.
+        :return:
+        """
         serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -81,22 +89,38 @@ class CreateUserView(APIView):
             return Response(serializer.errors)
 
 
-class UpdateUserView(APIView):
+class UserUpdateView(viewsets.ViewSet):
     """
     View-класс для изменения пользователей. Допускается изменение только своего пользователя и только для
-    авторизированных пользователей
+    авторизированных пользователей. Допускается частичное изменение, а также просмотр личных данных.
     """
     model = get_user_model()
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = UserUpdateSerializer
+    queryset = User.objects.all()
 
-    def get(self, request):
+    def list(self, request):
+        """
+        Функция для отображения текущих данных пользователя
+        :param request:
+        :return: JSON
+        """
         user = request.user
         serializer = UserUpdateSerializer(user)
         return Response(serializer.data)
 
-    def patch(self, request):
-        user = request.user
+    def partial_update(self, request, pk=None):
+        """
+        Функция для изменения данных пользователя
+        :param request: Данные для изменения полей пользователя.
+        :param pk: ID пользователя.
+        :return: JSOM
+        """
+        queryset = User.objects.all()
+        user = get_object_or_404(queryset, pk=pk)
+        # если юзер не совпадает с юзером из запроса
+        if user != request.user:
+            return Response({"error": "Not authorized"})
         # передаем partial=True, чтобы не требовать полную информацию от пользователя каждый раз
         serializer = UserUpdateSerializer(user, data=request.data, partial=True)
         if serializer.is_valid():
@@ -108,11 +132,17 @@ class UpdateUserView(APIView):
 
 class RefreshToken(APIView):
     """
-    View-класс для обновления токена доступа
+    View-класс для обновления токена доступа. Принимает логин и пароль.
     """
     permission_classes = [permissions.IsAuthenticated, ]
+    serializer_class = UserSerializer
 
     def post(self, request):
+        """
+        Функция для обновления токена доступа.
+        :param request: Должен содержать логин и пароль.
+        :return: Объект токена.
+        """
         user = request.user
         if request.data.get('username'):
             if request.auth.user.email != request.data.get('username'):
@@ -123,6 +153,7 @@ class RefreshToken(APIView):
                 old_token = request.auth
                 Token.objects.filter(key=old_token).delete()
                 token = Token.objects.create(user=user)
+                send_token_email.delay(user.email, token.key)
                 return Response({
                     'token': token.key,
                 })
@@ -135,9 +166,14 @@ class RefreshToken(APIView):
 class PartnerUpdate(APIView):
     permission_classes = [permissions.IsAuthenticated, ]
     """
-    Класс для обновления прайса от поставщика
+    Класс для обновления прайса от поставщика. Принимает ссылку на .yaml-файл с информацией.
     """
     def post(self, request):
+        """
+        Функция для обработки .yaml файла
+        :param request: ссылка на .yaml файл
+        :return: JSON
+        """
 
         if request.user.type != 'shop':
             return JsonResponse({'Status': False, 'Error': 'Shops only'}, status=403)
@@ -182,14 +218,30 @@ class PartnerUpdate(APIView):
 
 
 class ProductView(viewsets.ViewSet):
+    """
+    View для просмотра и изменения параметров продуктов. Доступ только для аутентифицированных пользователей.
+    """
     permission_classes = [permissions.IsAuthenticated, ]
+    serializer_class = ProductInfoSerializer
+    queryset = ProductInfo.objects.all()
 
     def list(self, request):
+        """
+        Функция для просмотра всех продуктов в магазинах
+        :param request:
+        :return: JSON
+        """
         products = Product.objects.all()
         serializer = ProductSerializer(products, many=True)
         return Response({"products": serializer.data})
 
     def retrieve(self, request, pk=None):
+        """
+        Функция для отображения детальной информации продукта
+        :param request:
+        :param pk: ID продукта
+        :return: JSON
+        """
         queryset = ProductInfo.objects.all()
         product_info = get_object_or_404(queryset, pk=pk)
         serializer = ProductInfoSerializer(product_info)
@@ -197,9 +249,19 @@ class ProductView(viewsets.ViewSet):
 
 
 class OrderView(viewsets.ViewSet):
+    """
+    View для просмотра и изменения заказов. Доступ только для аутентифицированных пользователей.
+    """
     permission_classes = [permissions.IsAuthenticated, ]
+    serializer_class = OrderItemSerializer
+    queryset = OrderItem.objects.all()
 
     def list(self, request):
+        """
+        Функция для отображения всех заказов пользователя
+        :param request:
+        :return: JSON
+        """
         user_id = request.user.id
         orders = OrderItem.objects.filter(order__user__id=user_id).all()
         response = {}
@@ -219,6 +281,12 @@ class OrderView(viewsets.ViewSet):
             return Response({'orders': 'No orders found'})
 
     def retrieve(self, request, pk=None):
+        """
+        Функция для получения деталей заказа
+        :param request:
+        :param pk: ID заказа
+        :return: JSON
+        """
         user_id = request.user.id
         queryset = OrderItem.objects.all()
         order_item = get_object_or_404(queryset, pk=pk)
@@ -247,6 +315,11 @@ class OrderView(viewsets.ViewSet):
         return Response(response)
 
     def create(self, request):
+        """
+        Функция для создания заказа.
+        :param request: JSON-объект с данными контактов и количеством продуктов для заказа.
+        :return: JSON
+        """
         is_contact, contact = search_arg_request(request, 'contact')
         if not is_contact:
             return Response(contact)
@@ -328,6 +401,12 @@ class OrderView(viewsets.ViewSet):
             return Response({"quantity": "Only positive integers are allowed"})
 
     def partial_update(self, request, pk=None):
+        """
+        Функция для подтверждения заказа.
+        :param request: JSON-объект с данными контактов
+        :param pk: ID заказа
+        :return: JSON
+        """
         queryset = OrderItem.objects.all()
         order_item = get_object_or_404(queryset, pk=pk)
         contact = order_item.order.contact

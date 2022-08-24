@@ -18,19 +18,18 @@ from django.urls import path, include
 from rest_framework.authtoken import views
 from rest_framework.routers import DefaultRouter
 
-from backend.views import CreateUserView, UpdateUserView, PartnerUpdate, \
-    RefreshToken, ProductView, OrderView
+from backend.views import  PartnerUpdate, \
+    RefreshToken, ProductView, OrderView, RegisterView, UserUpdateView
 
 router = DefaultRouter()
 router.register(r'products', ProductView, basename='ProductInfo')
 router.register(r'orders', OrderView, basename='OrderItem')
+router.register(r'register', RegisterView, basename='Register')
+router.register(r'users', UserUpdateView, basename='User')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('get_token/', views.obtain_auth_token),
     path('refresh_token/', RefreshToken.as_view()),
-    path('register/', CreateUserView.as_view()),
-    path('user/', UpdateUserView.as_view()),
     path('partner_update/', PartnerUpdate.as_view()),
-    path('', include(router.urls)),
-]
+] + router.urls
