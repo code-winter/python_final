@@ -32,4 +32,5 @@ urlpatterns = [
     path('get_token/', views.obtain_auth_token),
     path('refresh_token/', RefreshToken.as_view()),
     path('partner_update/', PartnerUpdate.as_view()),
+    path('accounts/', include('allauth.urls')),
 ] + router.urls
